@@ -1,0 +1,61 @@
+### =======================================
+### MILESTONE 2: VENUE MANAGEMENT
+### =======================================
+
+### 8. Create a new Venue (as Admin)
+# @name createVenue
+POST http://localhost:8080/api/v1/venues
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "name": "Main Campus Auditorium",
+  "latitude": -6.7766,
+  "longitude": 39.2312,
+  "radius": 100
+}
+
+> {%
+    client.global.set("venueId", response.body.id);
+%}
+
+
+### 9. Attempt to create a Venue (as Attendee) - EXPECT 403 FORBIDDEN
+POST http://localhost:8080/api/v1/venues
+Content-Type: application/json
+Authorization: Bearer {{attendee_jwt}}
+
+{
+  "name": "Should Not Be Created",
+  "latitude": 0,
+  "longitude": 0,
+  "radius": 10
+}
+
+
+### 10. Get all Venues (as Admin)
+GET http://localhost:8080/api/v1/venues
+Authorization: Bearer {{admin_jwt}}
+
+
+### 11. Get a single Venue by ID (as Admin)
+GET http://localhost:8080/api/v1/venues/{{venueId}}
+Authorization: Bearer {{admin_jwt}}
+
+
+### 12. Update an existing Venue (as Admin)
+PUT http://localhost:8080/api/v1/venues/{{venueId}}
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "name": "Main Campus Auditorium (Updated)",
+  "latitude": -6.7767,
+  "longitude": 39.2313,
+  "radius": 110
+}
+
+
+### 13. Delete the Venue (as Admin)
+DELETE http://localhost:8080/api/v1/venues/{{venueId}}
+Authorization: Bearer {{admin_jwt}}

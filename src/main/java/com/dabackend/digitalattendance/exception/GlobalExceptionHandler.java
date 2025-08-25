@@ -2,6 +2,7 @@ package com.dabackend.digitalattendance.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException; // <-- NEW IMPORT
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,6 +24,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<Object> handleBadCredentialsException(BadCredentialsException ex, WebRequest request) {
         return buildErrorResponse(ex, HttpStatus.UNAUTHORIZED); // 401 Unauthorized
+    }
+
+    // ✅ NEW: This handles forbidden access due to security restrictions.
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Object> handleAccessDeniedException(AccessDeniedException ex, WebRequest request) {
+        return buildErrorResponse(new Exception("You do not have permission to access this resource."), HttpStatus.FORBIDDEN); // 403 Forbidden
     }
 
     // A fallback for any other unexpected errors.
