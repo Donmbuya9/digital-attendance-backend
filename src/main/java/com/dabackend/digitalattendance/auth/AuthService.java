@@ -7,8 +7,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.security.Principal;
 
 @Service
 @RequiredArgsConstructor
@@ -35,10 +38,14 @@ public class AuthService {
         userRepository.save(user);
 
         var jwtToken = jwtService.generateToken(user);
-        return AuthResponse.builder().token(jwtToken).build();
+
+        // UPDATED: Now returns the user profile along with the token
+        return AuthResponse.builder()
+                .token(jwtToken)
+                .user(mapToUserProfileDto(user))
+                .build();
     }
 
-    // In AuthService.java
     public AuthResponse login(LoginRequest request) {
         try {
             authenticationManager.authenticate(
@@ -48,7 +55,6 @@ public class AuthService {
                     )
             );
         } catch (Exception e) {
-            // This will ensure our handler catches a clean BadCredentialsException
             throw new BadCredentialsException("Invalid email or password.");
         }
 
@@ -56,6 +62,30 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalStateException("User not found after successful authentication. This should not happen."));
 
         var jwtToken = jwtService.generateToken(user);
-        return AuthResponse.builder().token(jwtToken).build();
+
+        // UPDATED: Now returns the user profile along with the token
+        return AuthResponse.builder()
+                .token(jwtToken)
+                .user(mapToUserProfileDto(user))
+                .build();
+    }
+
+    public UserProfileDto getMyProfile(Principal principal) {
+        String userEmail = principal.getName();
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found from token."));
+
+        return mapToUserProfileDto(user);
+    }
+
+    // NEW HELPER METHOD ADDED
+    private UserProfileDto mapToUserProfileDto(User user) {
+        return UserProfileDto.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .build();
     }
 }
