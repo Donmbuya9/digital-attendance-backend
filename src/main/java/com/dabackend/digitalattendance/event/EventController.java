@@ -16,32 +16,36 @@ public class EventController {
 
     private final EventService eventService;
 
+    // --- Admin Endpoints ---
+
     @PostMapping("/events")
-    @PreAuthorize("hasAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
     public ResponseEntity<EventResponseDto> createEvent(@RequestBody EventRequestDto requestDto) {
         return new ResponseEntity<>(eventService.createEvent(requestDto), HttpStatus.CREATED);
     }
 
     @GetMapping("/events")
-    @PreAuthorize("hasAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
     public ResponseEntity<List<EventResponseDto>> getAllEvents() {
         return ResponseEntity.ok(eventService.getAllEvents());
     }
 
     @GetMapping("/events/{eventId}")
-    @PreAuthorize("hasAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
     public ResponseEntity<EventDetailDto> getEventDetails(@PathVariable UUID eventId) {
         return ResponseEntity.ok(eventService.getEventWithAttendance(eventId));
     }
 
     @PostMapping("/events/{eventId}/attendance/start")
-    @PreAuthorize("hasAuthority('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
     public ResponseEntity<StartAttendanceResponse> startAttendance(@PathVariable UUID eventId) {
         return ResponseEntity.ok(eventService.startAttendance(eventId));
     }
 
+    // --- Attendee Endpoints ---
+
     @PostMapping("/events/{eventId}/attendance/mark")
-    @PreAuthorize("hasAuthority('ATTENDEE')")
+    @PreAuthorize("hasRole('ATTENDEE')") // UPDATED
     public ResponseEntity<Void> markAttendance(
             @PathVariable UUID eventId,
             @RequestBody MarkAttendanceRequest request,
@@ -50,13 +54,9 @@ public class EventController {
         return ResponseEntity.ok().build();
     }
 
-    // This is the new endpoint for attendees to view their own events
     @GetMapping("/attendee/events")
-    @PreAuthorize("hasAuthority('ATTENDEE')")
+    @PreAuthorize("hasRole('ATTENDEE')") // UPDATED
     public ResponseEntity<List<EventResponseDto>> getMyEvents(Principal principal) {
-        // This is a simplified implementation. A real app might have a dedicated service method.
-        // For now, we can filter all events. This is NOT efficient for large scale apps.
-        // A better approach would be custom queries.
-        return ResponseEntity.ok(List.of()); // Placeholder for now
+        return ResponseEntity.ok(eventService.getEventsForUser(principal));
     }
 }

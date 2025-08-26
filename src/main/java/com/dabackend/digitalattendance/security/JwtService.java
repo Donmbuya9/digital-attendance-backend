@@ -24,28 +24,22 @@ public class JwtService {
     @Value("${jwt.expiration.ms}")
     private long jwtExpiration;
 
-    // Extracts the username (email) from a JWT's subject claim.
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
-    // A generic method to extract any single claim from the token's payload.
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
     }
 
-    // Generates a new JWT for a user without any extra claims.
+    // THIS IS THE SIMPLIFIED METHOD
     public String generateToken(UserDetails userDetails) {
-        return generateToken(new HashMap<>(), userDetails);
+        // We no longer add any custom role claims.
+        // The token's only job is to securely identify the user by their email.
+        return buildToken(new HashMap<>(), userDetails, jwtExpiration);
     }
 
-    // Generates a new JWT for a user, allowing for extra claims to be included.
-    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
-        return buildToken(extraClaims, userDetails, jwtExpiration);
-    }
-
-    // Validates if a token is correct, belongs to the given user, and has not expired.
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
         return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
@@ -66,14 +60,13 @@ public class JwtService {
     ) {
         return Jwts.builder()
                 .setClaims(extraClaims)
-                .setSubject(userDetails.getUsername()) // The "subject" is the user's unique identifier (their email).
+                .setSubject(userDetails.getUsername())
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    // Extracts all claims from the token's payload by parsing it with our secret key.
     private Claims extractAllClaims(String token) {
         return Jwts
                 .parserBuilder()
@@ -83,7 +76,6 @@ public class JwtService {
                 .getBody();
     }
 
-    // Decodes our BASE64 secret key and prepares it for signing the JWT.
     private Key getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);

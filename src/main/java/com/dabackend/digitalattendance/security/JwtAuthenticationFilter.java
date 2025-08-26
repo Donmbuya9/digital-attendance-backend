@@ -43,14 +43,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         userEmail = jwtService.extractUsername(jwt);
 
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+            // 1. Look up the full user details from the database.
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+
+            // 2. Validate the token.
             if (jwtService.isTokenValid(jwt, userDetails)) {
+
+                // 3. Create the authentication token.
+                // CRITICAL: We get the authorities DIRECTLY from the userDetails object
+                // that we just fetched from the database. This is the most reliable source.
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
-                        null, // We don't have credentials
-                        userDetails.getAuthorities()
+                        null,
+                        userDetails.getAuthorities() // This will now correctly contain "ROLE_ADMINISTRATOR"
                 );
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                authToken.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request)
+                );
+
+                // 4. Set the authentication in the security context.
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }

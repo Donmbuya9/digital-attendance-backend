@@ -30,9 +30,11 @@ public class EventService {
     private final UserRepository userRepository;
     private final AttendanceCodeManager attendanceCodeManager;
 
-    // Create an event
+    // --- Administrator Methods ---
+
     @Transactional
     public EventResponseDto createEvent(EventRequestDto requestDto) {
+        // ... (this method is unchanged)
         Venue venue = venueRepository.findById(requestDto.getVenueId())
                 .orElseThrow(() -> new EntityNotFoundException("Venue not found"));
         Group group = groupRepository.findById(requestDto.getGroupId())
@@ -51,17 +53,17 @@ public class EventService {
         return mapToEventResponseDto(savedEvent);
     }
 
-    // Get all events
     @Transactional(readOnly = true)
     public List<EventResponseDto> getAllEvents() {
+        // ... (this method is unchanged)
         return eventRepository.findAll().stream()
                 .map(this::mapToEventResponseDto)
                 .collect(Collectors.toList());
     }
 
-    // Get a single event with detailed attendance status for all members
     @Transactional(readOnly = true)
     public EventDetailDto getEventWithAttendance(UUID eventId) {
+        // ... (this method is unchanged)
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
 
@@ -94,8 +96,8 @@ public class EventService {
                 .build();
     }
 
-    // Start the attendance window for an event
     public StartAttendanceResponse startAttendance(UUID eventId) {
+        // ... (this method is unchanged)
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
         Instant now = Instant.now();
@@ -109,9 +111,11 @@ public class EventService {
                 .build();
     }
 
-    // Mark attendance for an attendee
+    // --- Attendee Methods ---
+
     @Transactional
     public void markAttendance(UUID eventId, MarkAttendanceRequest request, Principal principal) {
+        // ... (this method is unchanged)
         String userEmail = principal.getName();
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
@@ -143,8 +147,28 @@ public class EventService {
         attendanceRecordRepository.save(record);
     }
 
-    // Helper method for Haversine formula to calculate distance
+    // --- NEW METHOD ADDED ---
+    /**
+     * Retrieves all events for the currently authenticated user.
+     * @param principal The security principal of the logged-in user.
+     * @return A list of events for that user.
+     */
+    @Transactional(readOnly = true)
+    public List<EventResponseDto> getEventsForUser(Principal principal) {
+        String userEmail = principal.getName();
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        // Use the new custom query from the repository
+        return eventRepository.findEventsByUserId(user.getId()).stream()
+                .map(this::mapToEventResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    // --- Helper Methods ---
+
     private double calculateDistanceInMeters(double lat1, double lon1, double lat2, double lon2) {
+        // ... (this method is unchanged)
         final int R = 6371; // Radius of the earth in km
         double latDistance = Math.toRadians(lat2 - lat1);
         double lonDistance = Math.toRadians(lon2 - lon1);
@@ -155,8 +179,8 @@ public class EventService {
         return R * c * 1000; // convert to meters
     }
 
-    // Helper mapper
     private EventResponseDto mapToEventResponseDto(Event event) {
+        // ... (this method is unchanged)
         return EventResponseDto.builder()
                 .id(event.getId())
                 .title(event.getTitle())

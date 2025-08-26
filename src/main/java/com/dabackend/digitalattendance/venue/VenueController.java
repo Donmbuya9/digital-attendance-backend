@@ -11,7 +11,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/venues")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('ADMINISTRATOR')") // Secure ALL endpoints in this controller
+// UPDATED: Changed to the more conventional 'hasRole' check.
+@PreAuthorize("hasRole('ADMINISTRATOR')")
 public class VenueController {
 
     private final VenueService venueService;

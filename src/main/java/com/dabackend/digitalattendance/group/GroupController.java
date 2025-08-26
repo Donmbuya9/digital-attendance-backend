@@ -11,7 +11,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/groups")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('ADMINISTRATOR')")
+// UPDATED: Changed to the more conventional 'hasRole' check.
+@PreAuthorize("hasRole('ADMINISTRATOR')")
 public class GroupController {
 
     private final GroupService groupService;
@@ -34,7 +35,6 @@ public class GroupController {
     @PostMapping("/{groupId}/members")
     public ResponseEntity<Void> addMember(@PathVariable UUID groupId, @RequestBody AddMemberRequest request) {
         groupService.addMemberToGroup(groupId, request.getUserId());
-        // Per API contract, a success message is returned. A 200 OK is sufficient.
         return ResponseEntity.ok().build();
     }
 

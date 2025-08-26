@@ -21,7 +21,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(name = "users")
-// IMPLEMENT THE UserDetails INTERFACE
 public class User implements UserDetails {
 
     @Id
@@ -44,37 +43,36 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private UserRole role;
 
-    // --- UserDetails METHODS (NEWLY ADDED) ---
+    // --- UserDetails METHODS ---
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // This tells Spring Security what role the user has.
-        return List.of(new SimpleGrantedAuthority(role.name()));
+        // UPDATED: This now provides the authority in the format Spring expects for roles.
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
     @Override
     public String getUsername() {
-        // In our system, the email is the username.
         return email;
     }
 
     @Override
     public boolean isAccountNonExpired() {
-        return true; // We don't have account expiration logic.
+        return true;
     }
 
     @Override
     public boolean isAccountNonLocked() {
-        return true; // We don't have account locking logic.
+        return true;
     }
 
     @Override
     public boolean isCredentialsNonExpired() {
-        return true; // We don't have password expiration logic.
+        return true;
     }
 
     @Override
     public boolean isEnabled() {
-        return true; // All our users are enabled by default.
+        return true;
     }
 }
