@@ -1,8 +1,93 @@
-### =======================================
-### MILESTONE 2: GROUP MANAGEMENT
-### =======================================
+### =================================================================
+### FULL END-TO-END TEST SCRIPT
+### =================================================================
+# Run these requests in order from a clean database.
 
-### 14. Create a new Group (as Admin)
+### ---------------------------------------
+### STEP 1: SETUP ADMIN AND ATTENDEE USERS
+### ---------------------------------------
+
+### 1a. Register ADMINISTRATOR User
+# Expected: 200 OK
+# @name registerAdmin
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Admin",
+  "lastName": "User",
+  "email": "admin@example.com",
+  "password": "password123",
+  "role": "ADMINISTRATOR"
+}
+
+> {%
+    client.global.set("admin_jwt", response.body.token);
+    client.log("Admin JWT: " + response.body.token);
+%}
+
+### 1b. Register ATTENDEE User
+# Expected: 200 OK
+# @name registerAttendee
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Attendee",
+  "lastName": "One",
+  "email": "attendee1@example.com",
+  "password": "password123",
+  "role": "ATTENDEE"
+}
+
+> {%
+    client.global.set("attendee_jwt", response.body.token);
+    client.global.set("attendeeId", response.body.userId); // Assuming your API returns userId
+    client.log("Attendee JWT: " + response.body.token);
+    client.log("Attendee ID: " + response.body.userId);
+%}
+
+### If your API doesn't return userId in the response, use this alternative approach:
+### Get all users as admin to find the attendee ID
+# @name getUsers
+GET http://localhost:8080/api/v1/users
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    // This assumes your API returns a list of users
+    const users = response.body;
+    const attendee = users.find(user => user.email === "attendee1@example.com");
+    if (attendee) {
+        client.global.set("attendeeId", attendee.id);
+        client.log("Found attendee ID: " + attendee.id);
+    }
+%}
+
+### ---------------------------------------
+### STEP 2: SETUP VENUE AND GROUP
+### ---------------------------------------
+
+### 2a. Create a Venue
+# Expected: 201 Created
+# @name createVenue
+POST http://localhost:8080/api/v1/venues
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "name": "Main Campus Auditorium",
+  "latitude": -6.7766,
+  "longitude": 39.2312,
+  "radius": 100
+}
+
+> {%
+    client.global.set("venueId", response.body.id);
+    client.log("Venue ID: " + response.body.id);
+%}
+
+### 2b. Create a Group
+# Expected: 201 Created
 # @name createGroup
 POST http://localhost:8080/api/v1/groups
 Content-Type: application/json
@@ -15,18 +100,11 @@ Authorization: Bearer {{admin_jwt}}
 
 > {%
     client.global.set("groupId", response.body.id);
+    client.log("Group ID: " + response.body.id);
 %}
 
-
-### 15. Get the Attendee's User ID from the database
-### Go to phpMyAdmin, look in the `users` table for 'attendee1@example.com'
-
-# and copy its `id` value. Paste it into the `userId` variable below.
-@attendeeId = 5112a634-ff38-4bbc-8f57-221007719534
-
-
-
-### 16. Add Attendee as a Member to the Group
+### 2c. Add Attendee to Group
+# Expected: 200 OK
 POST http://localhost:8080/api/v1/groups/{{groupId}}/members
 Content-Type: application/json
 Authorization: Bearer {{admin_jwt}}
@@ -35,22 +113,114 @@ Authorization: Bearer {{admin_jwt}}
   "userId": "{{attendeeId}}"
 }
 
+> {%
+    if (response.status === 200) {
+        client.log("Successfully added attendee to group");
+    }
+%}
 
-### 17. Get Group Details (should include the new member)
-GET http://localhost:8080/api/v1/groups/{{groupId}}
+### ---------------------------------------
+### STEP 3: SCHEDULE AND RUN THE EVENT
+### ---------------------------------------
+
+### 3a. Create a new Event (as Admin)
+# This schedules an event to start in 1 minute.
+# Expected: 201 Created
+# @name createEvent
+POST http://localhost:8080/api/v1/events
+Content-Type: application/json
 Authorization: Bearer {{admin_jwt}}
 
+{
+  "title": "Live Test Event",
+  "description": "This is a test of the live attendance system.",
+  "venueId": "{{venueId}}",
+  "groupId": "{{groupId}}",
+  "startTime": "{{$datetime 'iso8601' 1 m }}",
+  "endTime": "{{$datetime 'iso8601' 61 m }}"
+}
 
-### 18. Remove Member from the Group
-DELETE http://localhost:8080/api/v1/groups/{{groupId}}/members/{{attendeeId}}
+> {%
+    client.log("--- 📌 Captured Event ID ---");
+    client.log(response.body.id);
+    client.global.set("eventId", response.body.id);
+%}
+
+### 3b. Get Event Details (as Admin)
+# Check that the attendee is listed with status PENDING.
+# Expected: 200 OK
+GET http://localhost:8080/api/v1/events/{{eventId}}
 Authorization: Bearer {{admin_jwt}}
 
+> {%
+    if (response.status === 200) {
+        client.log("Event details retrieved");
+        client.log("Attendee status: " + JSON.stringify(response.body.attendees));
+    }
+%}
 
-### 19. Get Group Details Again (member should be gone)
-GET http://localhost:8080/api/v1/groups/{{groupId}}
+### 3c. Start Attendance Window (Too Early)
+# IMPORTANT: Run this immediately after creating the event.
+# Expected: 400-level error with message "Event is not currently active."
+POST http://localhost:8080/api/v1/events/{{eventId}}/attendance/start
 Authorization: Bearer {{admin_jwt}}
 
+> {%
+    if (response.status >= 400) {
+        client.log("Expected error: " + response.body.message);
+    }
+%}
 
-### 20. Delete the Group
-DELETE http://localhost:8080/api/v1/groups/{{groupId}}
+### ---------------------------------------
+### !!! IMPORTANT: WAIT 60 SECONDS NOW !!!
+### Use a timer and pause execution
+### ---------------------------------------
+
+### 3d. Start Attendance Window (On Time)
+# Run this after waiting for the event's start time.
+# Expected: 200 OK with an attendanceCode in the response.
+# @name startAttendance
+POST http://localhost:8080/api/v1/events/{{eventId}}/attendance/start
 Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.global.set("attendanceCode", response.body.attendanceCode);
+        client.log("Attendance code: " + response.body.attendanceCode);
+        client.log("Code expires at: " + response.body.expiresAt);
+    }
+%}
+
+### 3e. Mark Attendance (as Attendee)
+# Provide the code and GPS coordinates INSIDE the venue radius.
+# Expected: 200 OK
+POST http://localhost:8080/api/v1/events/{{eventId}}/attendance/mark
+Content-Type: application/json
+Authorization: Bearer {{attendee_jwt}}
+
+{
+  "attendanceCode": "{{attendanceCode}}",
+  "latitude": -6.7766,
+  "longitude": 39.2312
+}
+
+> {%
+    if (response.status === 200) {
+        client.log("Attendance marked successfully");
+    } else {
+        client.log("Error marking attendance: " + response.body.message);
+    }
+%}
+
+### 3f. Get Event Details Again (as Admin)
+# Verify the attendee's status has changed to PRESENT.
+# Expected: 200 OK
+GET http://localhost:8080/api/v1/events/{{eventId}}
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.log("Final event details:");
+        client.log(JSON.stringify(response.body.attendees, null, 2));
+    }
+%}

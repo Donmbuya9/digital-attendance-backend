@@ -1,0 +1,79 @@
+### =======================================
+### EVENT RUN SCRIPT  (values from 09:54 run)
+### =======================================
+
+### --- IDs & tokens from 09:54 run ---
+@admin_jwt  = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBleGFtcGxlLmNvbSIsImlhdCI6MTc1NjE5MTI4MiwiZXhwIjoxNzU2Mjc3NjgyfQ.TVKGgxfK7j9vnBeIM4ZWNdgwpOqYawYAwEX5TeQyOfU
+@attendee_jwt = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdHRlbmRlZTFAZXhhbXBsZS5jb20iLCJpYXQiOjE3NTYxOTEyODMsImV4cCI6MTc1NjI3NzY4M30.SqqJcy9wWX5CpTB-h9rxgKI12jWyZn3LWU7PjKL8LGQ
+@venueId   = 0ee04ca2-6baf-4b80-8410-bcf0127ebea6
+@groupId   = 55b0296f-7d8b-4a91-b9e5-88e28c60099a
+### --------------------------------------
+
+### 1. Create a new Event (Admin)
+# Times are set ~30 s in the past so you can start immediately
+# @name createEvent
+POST http://localhost:8080/api/v1/events
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "title": "Live Test Event",
+  "description": "This is a test of the live attendance system.",
+  "venueId": "{{venueId}}",
+  "groupId": "{{groupId}}",
+  "startTime": "2025-08-26T06:54:10Z",
+  "endTime":   "2025-08-26T07:55:10Z"
+}
+
+> {%
+    client.global.set("eventId", response.body.id);
+    client.log("✅ Event created. ID: " + response.body.id);
+    client.log("Event starts at: " + response.body.startTime);
+%}
+###
+
+### 2. Get Event Details (check PENDING)
+GET http://localhost:8080/api/v1/events/{{eventId}}
+Authorization: Bearer {{admin_jwt}}
+###
+
+### 3. Start Attendance (Admin)
+# Because startTime is already in the past, no manual wait required
+# @name startAttendance
+POST http://localhost:8080/api/v1/events/{{eventId}}/attendance/start
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.global.set("attendanceCode", response.body.attendanceCode);
+        client.log("✅ Attendance started. Code: " + response.body.attendanceCode);
+    } else {
+        client.log("❌ Failed to start attendance: " + response.status + " - " + response.body.message);
+    }
+%}
+###
+
+### 4. Mark Attendance (Attendee)
+### Mark attendance (use the new code)
+POST http://localhost:8080/api/v1/events/2c5bb28a-db35-4e4e-b2ee-af9cc3b8e507/attendance/mark
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdHRlbmRlZTFAZXhhbXBsZS5jb20iLCJpYXQiOjE3NTYxOTEyODMsImV4cCI6MTc1NjI3NzY4M30.SqqJcy9wWX5CpTB-h9rxgKI12jWyZn3LWU7PjKL8LGQ
+
+{
+  "attendanceCode": "432-037",
+  "latitude": -6.7766,
+  "longitude": 39.2312
+}
+###
+
+### 5. Final check – get event details
+GET http://localhost:8080/api/v1/events/{{eventId}}
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.log("Final event status retrieved");
+    } else {
+        client.log("❌ Failed to get event details: " + response.status);
+    }
+%}

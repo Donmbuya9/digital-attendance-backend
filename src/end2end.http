@@ -1,0 +1,363 @@
+### =======================================
+### GLOBAL SETUP
+### =======================================
+# This clears previously saved variables for a clean run.
+# @name clearGlobals
+GET http://localhost:8080/api/v1/auth/hello
+
+> {%
+    client.global.clear();
+    client.log("🌐 Cleared global variables for a fresh test run.");
+%}
+###
+
+### =======================================
+### MILESTONE 1: AUTHENTICATION
+### =======================================
+
+### 1. Register ADMINISTRATOR
+# @name registerAdmin
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Admin",
+  "lastName": "User",
+  "email": "admin@example.com",
+  "password": "password123",
+  "role": "ADMINISTRATOR"
+}
+
+> {%
+    if (response.status === 200 || response.status === 201) {
+        client.log("--- 🔐 Captured Admin JWT ---");
+        client.log("Token: " + response.body.token.substring(0, 20) + "...");
+        client.global.set("admin_jwt", response.body.token);
+
+        // Try to get user ID from response for potential future use
+        if (response.body.id) {
+            client.global.set("admin_id", response.body.id);
+            client.log("Admin ID: " + response.body.id);
+        }
+    } else {
+        client.log("❌ ADMIN REGISTRATION FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Admin registration failed");
+    }
+%}
+###
+
+### 2. Register ATTENDEE
+# @name registerAttendee
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Attendee",
+  "lastName": "One",
+  "email": "attendee1@example.com",
+  "password": "password123",
+  "role": "ATTENDEE"
+}
+
+> {%
+    if (response.status === 200 || response.status === 201) {
+        client.log("--- 🧍 Captured Attendee JWT ---");
+        client.log("Token: " + response.body.token.substring(0, 20) + "...");
+        client.global.set("attendee_jwt", response.body.token);
+
+        // Try to get user ID from different possible response formats
+        if (response.body.id) {
+            client.global.set("attendeeId", response.body.id);
+            client.log("Attendee ID from registration: " + response.body.id);
+        } else if (response.body.user && response.body.user.id) {
+            client.global.set("attendeeId", response.body.user.id);
+            client.log("Attendee ID from user object: " + response.body.user.id);
+        } else if (response.body.userId) {
+            client.global.set("attendeeId", response.body.userId);
+            client.log("Attendee ID from userId field: " + response.body.userId);
+        }
+    } else {
+        client.log("❌ ATTENDEE REGISTRATION FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Attendee registration failed");
+    }
+%}
+###
+
+### =======================================
+### MILESTONE 2, PART 1: VENUES
+### =======================================
+
+### 3. Create a Venue (as Admin)
+# @name createVenue
+POST http://localhost:8080/api/v1/venues
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "name": "Main Campus Auditorium",
+  "latitude": -6.7766,
+  "longitude": 39.2312,
+  "radius": 100
+}
+
+> {%
+    if (response.status === 201) {
+        client.log("--- 📍 Captured Venue ID ---");
+        client.log("Venue ID: " + response.body.id);
+        client.global.set("venueId", response.body.id);
+    } else {
+        client.log("❌ VENUE CREATION FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Venue creation failed");
+    }
+%}
+###
+
+### =======================================
+### MILESTONE 2, PART 2: GROUPS & MEMBERS
+### =======================================
+
+### 4. Create a Group (as Admin)
+# @name createGroup
+POST http://localhost:8080/api/v1/groups
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "name": "Java IPT - Fall 2025",
+  "description": "The cohort for the Industrial Practical Training."
+}
+
+> {%
+    if (response.status === 201) {
+        client.log("--- 👥 Captured Group ID ---");
+        client.log("Group ID: " + response.body.id);
+        client.global.set("groupId", response.body.id);
+    } else {
+        client.log("❌ GROUP CREATION FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Group creation failed");
+    }
+%}
+###
+
+### 5. Get the Attendee's User ID by Email (Fallback if not already set)
+# @name getAttendeeByEmail
+GET http://localhost:8080/api/v1/users/by-email/attendee1@example.com
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        if (response.body && response.body.id) {
+            client.log("--- 🧾 Captured Attendee User ID ---");
+            client.log("Attendee ID: " + response.body.id);
+            client.global.set("attendeeId", response.body.id);
+        } else {
+            client.log("⚠️  User email lookup returned no ID, trying users list...");
+
+            // Fallback: Get all users and find the attendee
+            client.global.set("_temp_url", client.request.url);
+            client.request.url = "http://localhost:8080/api/v1/users";
+            client.isRequest = false; // This will prevent the actual request
+        }
+    } else if (response.status === 404) {
+        client.log("⚠️  User email endpoint not found, trying users list...");
+        client.global.set("_temp_url", client.request.url);
+        client.request.url = "http://localhost:8080/api/v1/users";
+        client.isRequest = false;
+    } else {
+        client.log("❌ USER LOOKUP FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+    }
+%}
+###
+
+### 5b. Fallback: Get all users to find attendee ID
+# @name getAllUsers
+GET http://localhost:8080/api/v1/users
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200 && response.body && response.body.length) {
+        const attendee = response.body.find(user => user.email === "attendee1@example.com");
+        if (attendee && attendee.id) {
+            client.log("--- 🧾 Found Attendee ID from users list ---");
+            client.log("Attendee ID: " + attendee.id);
+            client.global.set("attendeeId", attendee.id);
+        } else {
+            client.log("❌ ATTENDEE NOT FOUND IN USERS LIST");
+            client.log("Available users: " + JSON.stringify(response.body.map(u => u.email)));
+            throw new Error("Attendee not found in users list");
+        }
+    } else {
+        client.log("❌ FAILED TO GET USERS LIST: " + response.status);
+        throw new Error("Could not retrieve users list");
+    }
+%}
+###
+
+### 6. Add Attendee to the Group (as Admin)
+POST http://localhost:8080/api/v1/groups/{{groupId}}/members
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "userId": "{{attendeeId}}"
+}
+
+> {%
+    if (response.status === 200) {
+        client.log("✅ Attendee successfully added to group");
+    } else if (response.status === 400 || response.status === 409) {
+        client.log("⚠️  Attendee might already be in group: " + response.status);
+        client.log("Response: " + JSON.stringify(response.body));
+    } else {
+        client.log("❌ FAILED TO ADD ATTENDEE TO GROUP: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Failed to add attendee to group");
+    }
+%}
+###
+
+### =======================================
+### MILESTONE 2, PART 3: EVENTS & ATTENDANCE
+### =======================================
+
+### 7. Create an Event (as Admin)
+# @name createEvent
+POST http://localhost:8080/api/v1/events
+Content-Type: application/json
+Authorization: Bearer {{admin_jwt}}
+
+{
+  "title": "Live Test Event",
+  "description": "This is a test of the live attendance system.",
+  "venueId": "{{venueId}}",
+  "groupId": "{{groupId}}",
+  "startTime": "{{$datetime 'YYYY-MM-DDTHH:mm:ss' 1 m}}",
+  "endTime": "{{$datetime 'YYYY-MM-DDTHH:mm:ss' 61 m}}"
+}
+
+> {%
+    if (response.status === 201) {
+        client.log("--- 📌 Captured Event ID ---");
+        client.log("Event ID: " + response.body.id);
+        client.log("Start Time: " + response.body.startTime);
+        client.log("End Time: " + response.body.endTime);
+        client.global.set("eventId", response.body.id);
+    } else {
+        client.log("❌ EVENT CREATION FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Event creation failed");
+    }
+%}
+###
+
+### 8. Get Event Details (Check for PENDING status)
+GET http://localhost:8080/api/v1/events/{{eventId}}
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.log("✅ Event details retrieved");
+        if (response.body.attendees && response.body.attendees.length) {
+            const attendeeStatus = response.body.attendees.find(a => a.email === "attendee1@example.com");
+            if (attendeeStatus) {
+                client.log("Attendee initial status: " + attendeeStatus.status);
+            }
+        }
+    } else {
+        client.log("❌ FAILED TO GET EVENT DETAILS: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+    }
+%}
+###
+
+### --- IMPORTANT: WAIT 1 MINUTE BEFORE RUNNING THE NEXT STEPS --- ###
+# @name waitInstruction
+GET http://localhost:8080/api/v1/auth/hello
+
+> {%
+    client.log("\n\n >>>>>>>>> ⏰ PLEASE WAIT 60 SECONDS... ⏰ <<<<<<<<< \n\n");
+    client.log("Event start time: {{$datetime 'YYYY-MM-DDTHH:mm:ss' 1 m}}");
+    client.log("Current time: {{$datetime 'YYYY-MM-DDTHH:mm:ss'}}");
+    client.log("\nAfter waiting, continue with the next step.\n");
+%}
+###
+
+### 9. Start Attendance (as Admin)
+# @name startAttendance
+POST http://localhost:8080/api/v1/events/{{eventId}}/attendance/start
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.log("--- 📣 Captured Attendance Code ---");
+        client.log("Code: " + response.body.attendanceCode);
+        client.log("Expires at: " + response.body.expiresAt);
+        client.global.set("attendanceCode", response.body.attendanceCode);
+    } else {
+        client.log("❌ FAILED TO START ATTENDANCE: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Failed to start attendance session");
+    }
+%}
+###
+
+### 10. Mark Attendance (as Attendee)
+POST http://localhost:8080/api/v1/events/{{eventId}}/attendance/mark
+Content-Type: application/json
+Authorization: Bearer {{attendee_jwt}}
+
+{
+  "attendanceCode": "{{attendanceCode}}",
+  "latitude": -6.7766,
+  "longitude": 39.2312
+}
+
+> {%
+    if (response.status === 200) {
+        client.log("✅ Attendance marked successfully!");
+    } else {
+        client.log("❌ FAILED TO MARK ATTENDANCE: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+        throw new Error("Failed to mark attendance");
+    }
+%}
+###
+
+### 11. Final Verification: Get Event Details (Check for PRESENT status)
+GET http://localhost:8080/api/v1/events/{{eventId}}
+Authorization: Bearer {{admin_jwt}}
+
+> {%
+    if (response.status === 200) {
+        client.log("\n🎉 FINAL VERIFICATION RESULTS:");
+        client.log("Event: " + response.body.title);
+
+        if (response.body.attendees && response.body.attendees.length) {
+            const attendee = response.body.attendees.find(a => a.email === "attendee1@example.com");
+            if (attendee) {
+                client.log("Attendee: " + attendee.firstName + " " + attendee.lastName);
+                client.log("Status: " + attendee.status);
+                client.log("Marked at: " + attendee.markedAt);
+
+                if (attendee.status === "PRESENT") {
+                    client.log("✅ SUCCESS: Attendance system is working correctly!");
+                } else {
+                    client.log("❌ ISSUE: Expected PRESENT but got " + attendee.status);
+                }
+            } else {
+                client.log("❌ Attendee not found in event attendees");
+            }
+        } else {
+            client.log("❌ No attendees found for this event");
+        }
+    } else {
+        client.log("❌ FINAL VERIFICATION FAILED: " + response.status);
+        client.log("Error: " + JSON.stringify(response.body));
+    }
+%}
+###
