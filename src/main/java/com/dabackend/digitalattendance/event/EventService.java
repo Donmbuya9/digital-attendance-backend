@@ -6,6 +6,7 @@ import com.dabackend.digitalattendance.group.GroupRepository;
 import com.dabackend.digitalattendance.user.User;
 import com.dabackend.digitalattendance.user.UserRepository;
 import com.dabackend.digitalattendance.venue.Venue;
+import com.dabackend.digitalattendance.venue.VenueDto;
 import com.dabackend.digitalattendance.venue.VenueRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EventService {
 
+    // ... (fields are the same)
     private final EventRepository eventRepository;
     private final VenueRepository venueRepository;
     private final GroupRepository groupRepository;
@@ -30,11 +32,9 @@ public class EventService {
     private final UserRepository userRepository;
     private final AttendanceCodeManager attendanceCodeManager;
 
-    // --- Administrator Methods ---
-
+    // ... (createEvent, getAllEvents are the same)
     @Transactional
     public EventResponseDto createEvent(EventRequestDto requestDto) {
-        // ... (this method is unchanged)
         Venue venue = venueRepository.findById(requestDto.getVenueId())
                 .orElseThrow(() -> new EntityNotFoundException("Venue not found"));
         Group group = groupRepository.findById(requestDto.getGroupId())
@@ -52,18 +52,16 @@ public class EventService {
         Event savedEvent = eventRepository.save(event);
         return mapToEventResponseDto(savedEvent);
     }
-
     @Transactional(readOnly = true)
     public List<EventResponseDto> getAllEvents() {
-        // ... (this method is unchanged)
         return eventRepository.findAll().stream()
                 .map(this::mapToEventResponseDto)
                 .collect(Collectors.toList());
     }
 
+    // UPDATED getEventWithAttendance
     @Transactional(readOnly = true)
     public EventDetailDto getEventWithAttendance(UUID eventId) {
-        // ... (this method is unchanged)
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
 
@@ -84,20 +82,34 @@ public class EventService {
                             .build();
                 }).toList();
 
+        // This now uses the full VenueDto
+        VenueDto venueDto = VenueDto.builder()
+                .id(event.getVenue().getId())
+                .name(event.getVenue().getName())
+                .latitude(event.getVenue().getLatitude())
+                .longitude(event.getVenue().getLongitude())
+                .radius(event.getVenue().getRadius())
+                .build();
+
+        EventResponseDto.GroupInfo groupInfo = EventResponseDto.GroupInfo.builder()
+                .id(event.getGroup().getId())
+                .name(event.getGroup().getName())
+                .build();
+
         return EventDetailDto.builder()
                 .id(event.getId())
                 .title(event.getTitle())
                 .description(event.getDescription())
                 .startTime(event.getStartTime())
                 .endTime(event.getEndTime())
-                .venue(EventResponseDto.VenueInfo.builder().id(event.getVenue().getId()).name(event.getVenue().getName()).build())
-                .group(EventResponseDto.GroupInfo.builder().id(event.getGroup().getId()).name(event.getGroup().getName()).build())
+                .venue(venueDto) // Updated to use the full DTO
+                .group(groupInfo)
                 .attendees(attendees)
                 .build();
     }
 
+    // ... (startAttendance, markAttendance, getEventsForUser, calculateDistance are the same)
     public StartAttendanceResponse startAttendance(UUID eventId) {
-        // ... (this method is unchanged)
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
         Instant now = Instant.now();
@@ -111,26 +123,34 @@ public class EventService {
                 .build();
     }
 
-    // --- Attendee Methods ---
-
     @Transactional
     public void markAttendance(UUID eventId, MarkAttendanceRequest request, Principal principal) {
-        // ... (this method is unchanged)
+        // --- START: ADD THESE DEBUG LINES ---
+        System.out.println("\n--- MARK ATTENDANCE DEBUG ---");
+        System.out.println("User Coordinates (from Frontend): " + request.getLatitude() + ", " + request.getLongitude());
+
         String userEmail = principal.getName();
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
 
+        Venue venue = event.getVenue();
+        System.out.println("Venue Coordinates (from Database): " + venue.getLatitude() + ", " + venue.getLongitude());
+        System.out.println("Venue Radius (from Database): " + venue.getRadius() + " meters");
+
         if (!attendanceCodeManager.validateCode(eventId, request.getAttendanceCode())) {
             throw new IllegalStateException("Invalid or expired attendance code.");
         }
 
-        Venue venue = event.getVenue();
         double distance = calculateDistanceInMeters(
                 request.getLatitude(), request.getLongitude(),
                 venue.getLatitude(), venue.getLongitude()
         );
+        System.out.println("Calculated Distance: " + distance + " meters");
+        System.out.println("--- END DEBUG ---");
+        // --- END: ADD THESE DEBUG LINES ---
+
         if (distance > venue.getRadius()) {
             throw new IllegalStateException("You are outside the allowed radius for this venue.");
         }
@@ -147,48 +167,51 @@ public class EventService {
         attendanceRecordRepository.save(record);
     }
 
-    // --- NEW METHOD ADDED ---
-    /**
-     * Retrieves all events for the currently authenticated user.
-     * @param principal The security principal of the logged-in user.
-     * @return A list of events for that user.
-     */
     @Transactional(readOnly = true)
     public List<EventResponseDto> getEventsForUser(Principal principal) {
         String userEmail = principal.getName();
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        // Use the new custom query from the repository
         return eventRepository.findEventsByUserId(user.getId()).stream()
                 .map(this::mapToEventResponseDto)
                 .collect(Collectors.toList());
     }
 
-    // --- Helper Methods ---
-
     private double calculateDistanceInMeters(double lat1, double lon1, double lat2, double lon2) {
-        // ... (this method is unchanged)
-        final int R = 6371; // Radius of the earth in km
+        final int R = 6371;
         double latDistance = Math.toRadians(lat2 - lat1);
         double lonDistance = Math.toRadians(lon2 - lon1);
         double a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2)
                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
                 * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c * 1000; // convert to meters
+        return R * c * 1000;
     }
 
+    // UPDATED mapToEventResponseDto
     private EventResponseDto mapToEventResponseDto(Event event) {
-        // ... (this method is unchanged)
+        VenueDto venueDto = VenueDto.builder()
+                .id(event.getVenue().getId())
+                .name(event.getVenue().getName())
+                .latitude(event.getVenue().getLatitude())
+                .longitude(event.getVenue().getLongitude())
+                .radius(event.getVenue().getRadius())
+                .build();
+
+        EventResponseDto.GroupInfo groupInfo = EventResponseDto.GroupInfo.builder()
+                .id(event.getGroup().getId())
+                .name(event.getGroup().getName())
+                .build();
+
         return EventResponseDto.builder()
                 .id(event.getId())
                 .title(event.getTitle())
                 .description(event.getDescription())
                 .startTime(event.getStartTime())
                 .endTime(event.getEndTime())
-                .venue(EventResponseDto.VenueInfo.builder().id(event.getVenue().getId()).name(event.getVenue().getName()).build())
-                .group(EventResponseDto.GroupInfo.builder().id(event.getGroup().getId()).name(event.getGroup().getName()).build())
+                .venue(venueDto)
+                .group(groupInfo)
                 .build();
     }
 }

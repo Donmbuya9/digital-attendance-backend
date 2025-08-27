@@ -1,5 +1,6 @@
 package com.dabackend.digitalattendance.event;
 
+import com.dabackend.digitalattendance.venue.VenueDto; // <-- NEW IMPORT
 import lombok.Builder;
 import lombok.Data;
 import java.time.Instant;
@@ -13,15 +14,13 @@ public class EventResponseDto {
     private String description;
     private Instant startTime;
     private Instant endTime;
-    private VenueInfo venue;
+
+    // UPDATED: This now uses the full VenueDto, not the limited VenueInfo
+    private VenueDto venue;
+
     private GroupInfo group;
 
-    @Data
-    @Builder
-    public static class VenueInfo {
-        private UUID id;
-        private String name;
-    }
+    // The VenueInfo static class has been removed.
 
     @Data
     @Builder

@@ -1,5 +1,7 @@
+// In EventDetailDto.java
 package com.dabackend.digitalattendance.event;
 
+import com.dabackend.digitalattendance.venue.VenueDto;
 import lombok.Builder;
 import lombok.Data;
 import java.time.Instant;
@@ -14,7 +16,7 @@ public class EventDetailDto {
     private String description;
     private Instant startTime;
     private Instant endTime;
-    private EventResponseDto.VenueInfo venue;
+    private VenueDto venue; // Use the full VenueDto here as well
     private EventResponseDto.GroupInfo group;
     private List<AttendeeStatusDto> attendees;
 }
