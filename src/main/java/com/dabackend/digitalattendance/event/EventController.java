@@ -1,5 +1,6 @@
 package com.dabackend.digitalattendance.event;
 
+import com.dabackend.digitalattendance.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,33 +20,43 @@ public class EventController {
     // --- Admin Endpoints ---
 
     @PostMapping("/events")
-    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<EventResponseDto> createEvent(@RequestBody EventRequestDto requestDto) {
         return new ResponseEntity<>(eventService.createEvent(requestDto), HttpStatus.CREATED);
     }
 
     @GetMapping("/events")
-    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<List<EventResponseDto>> getAllEvents() {
         return ResponseEntity.ok(eventService.getAllEvents());
     }
 
     @GetMapping("/events/{eventId}")
-    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<EventDetailDto> getEventDetails(@PathVariable UUID eventId) {
         return ResponseEntity.ok(eventService.getEventWithAttendance(eventId));
     }
 
     @PostMapping("/events/{eventId}/attendance/start")
-    @PreAuthorize("hasRole('ADMINISTRATOR')") // UPDATED
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<StartAttendanceResponse> startAttendance(@PathVariable UUID eventId) {
         return ResponseEntity.ok(eventService.startAttendance(eventId));
+    }
+
+    // NEW ENDPOINT ADDED
+    @PostMapping("/events/{eventId}/attendance/manual-override")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse> manualOverride(
+            @PathVariable UUID eventId,
+            @RequestBody ManualOverrideRequest request) {
+
+        return ResponseEntity.ok(eventService.manualOverrideAttendance(eventId, request));
     }
 
     // --- Attendee Endpoints ---
 
     @PostMapping("/events/{eventId}/attendance/mark")
-    @PreAuthorize("hasRole('ATTENDEE')") // UPDATED
+    @PreAuthorize("hasRole('ATTENDEE')")
     public ResponseEntity<Void> markAttendance(
             @PathVariable UUID eventId,
             @RequestBody MarkAttendanceRequest request,
@@ -55,7 +66,7 @@ public class EventController {
     }
 
     @GetMapping("/attendee/events")
-    @PreAuthorize("hasRole('ATTENDEE')") // UPDATED
+    @PreAuthorize("hasRole('ATTENDEE')")
     public ResponseEntity<List<EventResponseDto>> getMyEvents(Principal principal) {
         return ResponseEntity.ok(eventService.getEventsForUser(principal));
     }

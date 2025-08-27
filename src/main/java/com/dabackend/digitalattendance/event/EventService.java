@@ -1,5 +1,6 @@
 package com.dabackend.digitalattendance.event;
 
+import com.dabackend.digitalattendance.common.ApiResponse;
 import com.dabackend.digitalattendance.group.Group;
 import com.dabackend.digitalattendance.group.GroupMember;
 import com.dabackend.digitalattendance.group.GroupRepository;
@@ -10,9 +11,12 @@ import com.dabackend.digitalattendance.venue.VenueDto;
 import com.dabackend.digitalattendance.venue.VenueRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
@@ -24,7 +28,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EventService {
 
-    // ... (fields are the same)
     private final EventRepository eventRepository;
     private final VenueRepository venueRepository;
     private final GroupRepository groupRepository;
@@ -32,7 +35,6 @@ public class EventService {
     private final UserRepository userRepository;
     private final AttendanceCodeManager attendanceCodeManager;
 
-    // ... (createEvent, getAllEvents are the same)
     @Transactional
     public EventResponseDto createEvent(EventRequestDto requestDto) {
         Venue venue = venueRepository.findById(requestDto.getVenueId())
@@ -52,6 +54,7 @@ public class EventService {
         Event savedEvent = eventRepository.save(event);
         return mapToEventResponseDto(savedEvent);
     }
+
     @Transactional(readOnly = true)
     public List<EventResponseDto> getAllEvents() {
         return eventRepository.findAll().stream()
@@ -59,7 +62,6 @@ public class EventService {
                 .collect(Collectors.toList());
     }
 
-    // UPDATED getEventWithAttendance
     @Transactional(readOnly = true)
     public EventDetailDto getEventWithAttendance(UUID eventId) {
         Event event = eventRepository.findById(eventId)
@@ -82,7 +84,6 @@ public class EventService {
                             .build();
                 }).toList();
 
-        // This now uses the full VenueDto
         VenueDto venueDto = VenueDto.builder()
                 .id(event.getVenue().getId())
                 .name(event.getVenue().getName())
@@ -102,13 +103,12 @@ public class EventService {
                 .description(event.getDescription())
                 .startTime(event.getStartTime())
                 .endTime(event.getEndTime())
-                .venue(venueDto) // Updated to use the full DTO
+                .venue(venueDto)
                 .group(groupInfo)
                 .attendees(attendees)
                 .build();
     }
 
-    // ... (startAttendance, markAttendance, getEventsForUser, calculateDistance are the same)
     public StartAttendanceResponse startAttendance(UUID eventId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
@@ -125,32 +125,21 @@ public class EventService {
 
     @Transactional
     public void markAttendance(UUID eventId, MarkAttendanceRequest request, Principal principal) {
-        // --- START: ADD THESE DEBUG LINES ---
-        System.out.println("\n--- MARK ATTENDANCE DEBUG ---");
-        System.out.println("User Coordinates (from Frontend): " + request.getLatitude() + ", " + request.getLongitude());
-
         String userEmail = principal.getName();
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("Event not found"));
 
-        Venue venue = event.getVenue();
-        System.out.println("Venue Coordinates (from Database): " + venue.getLatitude() + ", " + venue.getLongitude());
-        System.out.println("Venue Radius (from Database): " + venue.getRadius() + " meters");
-
         if (!attendanceCodeManager.validateCode(eventId, request.getAttendanceCode())) {
             throw new IllegalStateException("Invalid or expired attendance code.");
         }
 
+        Venue venue = event.getVenue();
         double distance = calculateDistanceInMeters(
                 request.getLatitude(), request.getLongitude(),
                 venue.getLatitude(), venue.getLongitude()
         );
-        System.out.println("Calculated Distance: " + distance + " meters");
-        System.out.println("--- END DEBUG ---");
-        // --- END: ADD THESE DEBUG LINES ---
-
         if (distance > venue.getRadius()) {
             throw new IllegalStateException("You are outside the allowed radius for this venue.");
         }
@@ -178,6 +167,35 @@ public class EventService {
                 .collect(Collectors.toList());
     }
 
+    // NEW METHOD ADDED
+    @Transactional
+    public ApiResponse manualOverrideAttendance(UUID eventId, ManualOverrideRequest request) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found."));
+
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found."));
+
+        boolean isMember = event.getGroup().getMembers().stream()
+                .anyMatch(member -> member.getUser().getId().equals(request.getUserId()));
+
+        if (!isMember) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not a member of the group for this event.");
+        }
+
+        AttendanceRecord record = attendanceRecordRepository.findByEventIdAndUserId(eventId, user.getId())
+                .orElse(AttendanceRecord.builder()
+                        .event(event)
+                        .user(user)
+                        .build());
+
+        record.setStatus(AttendanceStatus.PRESENT);
+        record.setMarkedAt(Instant.now());
+        attendanceRecordRepository.save(record);
+
+        return new ApiResponse("Attendee successfully marked as PRESENT.");
+    }
+
     private double calculateDistanceInMeters(double lat1, double lon1, double lat2, double lon2) {
         final int R = 6371;
         double latDistance = Math.toRadians(lat2 - lat1);
@@ -189,7 +207,6 @@ public class EventService {
         return R * c * 1000;
     }
 
-    // UPDATED mapToEventResponseDto
     private EventResponseDto mapToEventResponseDto(Event event) {
         VenueDto venueDto = VenueDto.builder()
                 .id(event.getVenue().getId())
